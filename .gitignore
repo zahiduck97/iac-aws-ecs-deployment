@@ -1,0 +1,24 @@
+# Node.js backend
+/backend/node_modules
+/backend/.env
+
+# Terraform state (si usaras local en algún momento)
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# VSCode
+.vscode/
+
+# Mac / Linux / Windows
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Logs generales
+*.log
+
+# Otros
+.env
