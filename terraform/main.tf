@@ -108,7 +108,7 @@ resource "aws_ecs_task_definition" "app_task" {
   container_definitions = jsonencode([
     {
       name  = "app"
-      image = "${aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${aws_ecr_repository.app_repo.name}:latest"
+      image = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${aws_ecr_repository.app_repo.name}:latest"
       portMappings = [{
         containerPort = 3000
         protocol      = "tcp"

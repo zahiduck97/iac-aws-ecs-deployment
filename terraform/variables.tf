@@ -1,15 +1,17 @@
-############################################# BASIC #############################################
+
+variable "aws_account_id" {
+  description = "AWS Account ID"
+  type        = string
+}
 
 variable "aws_region" {
-  default = "us-east-1"
+  description = "AWS region"
+  type        = string
+  default     = "us-east-1"
 }
 
 variable "project_name" {
-  default = "devops-seed"
-}
-
-############################################# BASIC #############################################
-
-variable "aws_account_id" {
-  description = "291705473334"
+  description = "Project name"
+  type        = string
+  default     = "devops-seed"
 }
