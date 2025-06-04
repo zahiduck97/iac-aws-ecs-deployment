@@ -1,0 +1,20 @@
+{
+  "family": "devops-seed-task", 
+  "networkMode": "awsvpc",
+  "executionRoleArn": "arn:aws:iam::291705473334:role/devops-seed-ecs-task-execution-role",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "containerDefinitions": [
+    {
+      "name": "app",
+      "image": "placeholder", 
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "protocol": "tcp"
+        }
+      ]
+    }
+  ]
+}
