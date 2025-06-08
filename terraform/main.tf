@@ -1,4 +1,4 @@
-############################################# BASIC #############################################
+########################################## START BASIC #############################################
 
 resource "aws_vpc" "main" {
   cidr_block = "10.0.0.0/16"
@@ -7,14 +7,14 @@ resource "aws_vpc" "main" {
   }
 }
 
-resource "aws_subnet" "public" {
+resource "aws_subnet" "public_a" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.1.0/24"
   availability_zone       = "${var.aws_region}a"
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "${var.project_name}-subnet"
+    Name = "${var.project_name}-subnet-a"
   }
 }
 
@@ -37,7 +37,7 @@ resource "aws_route" "internet_access" {
 }
 
 resource "aws_route_table_association" "public_assoc" {
-  subnet_id      = aws_subnet.public.id
+  subnet_id      = aws_subnet.public_a.id
   route_table_id = aws_route_table.public_rt.id
 }
 
@@ -62,11 +62,15 @@ resource "aws_security_group" "ecs_sg" {
   }
 }
 
-############################################# BASIC #############################################
+########################################## END BASIC #############################################
+
+########################################## START PHASE 1 ###########################################
+
 
 # ECR Repository
 resource "aws_ecr_repository" "app_repo" {
-  name = "${var.project_name}-repo"
+  name         = "${var.project_name}-repo"
+  force_delete = true
 }
 
 # ECS Cluster
@@ -99,7 +103,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution_policy" {
 # Describe como levantar el container
 resource "aws_ecs_task_definition" "app_task" {
   family                   = "${var.project_name}-task"
-  network_mode             = "awsvpc" # cada task de ECS, tendra su propia IP dentro de la VPC
+  network_mode             = "awsvpc"    # cada task de ECS, tendra su propia IP dentro de la VPC
   requires_compatibilities = ["FARGATE"] # Backend serverless
   cpu                      = "256"
   memory                   = "512"
@@ -113,6 +117,16 @@ resource "aws_ecs_task_definition" "app_task" {
         containerPort = 3000
         protocol      = "tcp"
       }]
+
+      ## CloudWatch
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.ecs_app_log_group.name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "ecs"
+        }
+      }
     }
   ])
 }
@@ -127,8 +141,104 @@ resource "aws_ecs_service" "app_service" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = [aws_subnet.public.id]
+    subnets          = [aws_subnet.public_a.id]
     security_groups  = [aws_security_group.ecs_sg.id]
     assign_public_ip = true
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.app_tg.arn
+    container_name   = "app"
+    container_port   = 3000
+  }
+}
+
+########################################## END PHASE 1 #############################################
+
+####################################### START PHASE 2 #############################################
+
+resource "aws_security_group" "alb_sg" {
+  name        = "${var.project_name}-alb-sg"
+  description = "Allow HTTP and HTTPS inbound"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "Allow HTTP"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "Allow HTTPS"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_subnet" "public_b" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.2.0/24"
+  availability_zone       = "${var.aws_region}b"
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name = "${var.project_name}-subnet-b"
+  }
+}
+
+
+resource "aws_lb" "app_alb" {
+  name               = "${var.project_name}-alb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb_sg.id]
+  subnets            = [aws_subnet.public_a.id, aws_subnet.public_b.id]
+
+  enable_deletion_protection = false
+
+  ## Cloudwatch
+  access_logs {
+    bucket  = aws_s3_bucket.alb_logs_bucket.bucket
+    enabled = true
+  }
+}
+
+resource "aws_lb_target_group" "app_tg" {
+  name        = "${var.project_name}-tg"
+  port        = 3000
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+
+  health_check {
+    path                = "/"
+    protocol            = "HTTP"
+    interval            = 30
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 5
+  }
+}
+
+
+resource "aws_lb_listener" "app_listener" {
+  load_balancer_arn = aws_lb.app_alb.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app_tg.arn
   }
 }
