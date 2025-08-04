@@ -1,0 +1,36 @@
+name: Update ECS DNS
+
+on:
+  workflow_dispatch: # Permite ejecutarlo manualmente
+  workflow_run:
+    workflows: ["Build and Deploy"] # Debe coincidir con el nombre del workflow deploy.yml
+    types:
+      - completed
+
+jobs:
+  update-dns:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Get ECS Task Public IP
+        id: get_ip
+        run: |
+          TASK_ARN=$(aws ecs list-tasks --cluster devops-seed-cluster --service-name devops-seed-service --query 'taskArns[0]' --output text)
+          ENI_ID=$(aws ecs describe-tasks --cluster devops-seed-cluster --tasks $TASK_ARN --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' --output text)
+          PUBLIC_IP=$(aws ec2 describe-network-interfaces --network-interface-ids $ENI_ID --query 'NetworkInterfaces[0].Association.PublicIp' --output text)
+          echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
+
+      - name: Update Route53 Record
+        run: |
+          cat > change-batch.json <<EOF
+          {
+            "Changes": [
+              {
+                "Action": "UPSERT",
+                "ResourceRecord
