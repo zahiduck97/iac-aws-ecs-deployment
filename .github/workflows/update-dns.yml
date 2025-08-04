@@ -40,15 +40,11 @@ jobs:
             exit 1
           fi
 
-          echo "Task ARN: $TASK_ARN"
-
           ENI_ID=$(aws ecs describe-tasks \
             --cluster $CLUSTER_NAME \
             --tasks $TASK_ARN \
             --query 'tasks[0].attachments[0].details[?name==\`networkInterfaceId\`].value' \
             --output text)
-
-          echo "ENI ID: $ENI_ID"
 
           PUBLIC_IP=$(aws ec2 describe-network-interfaces \
             --network-interface-ids $ENI_ID \
@@ -62,30 +58,25 @@ jobs:
 
           echo "Public IP: $PUBLIC_IP"
 
-          echo "Building change batch for Route53..."
-          cat > change-batch.json <<EOF
-{
-  "Comment": "Update ECS origin to current public IP",
-  "Changes": [{
-    "Action": "UPSERT",
-    "ResourceRecordSet": {
-      "Name": "$SUBDOMAIN",
-      "Type": "A",
-      "TTL": 60,
-      "ResourceRecords": [{ "Value": "$PUBLIC_IP" }]
-    }
-  }]
-}
-EOF
+          echo "Creating change-batch.json"
+          echo '{
+            "Comment": "Update ECS origin to current public IP",
+            "Changes": [{
+              "Action": "UPSERT",
+              "ResourceRecordSet": {
+                "Name": "'"$SUBDOMAIN"'",
+                "Type": "A",
+                "TTL": 60,
+                "ResourceRecords": [{ "Value": "'"$PUBLIC_IP"'" }]
+              }
+            }]
+          }' > change-batch.json
 
           HOSTED_ZONE_ID=$(aws route53 list-hosted-zones-by-name \
             --dns-name $DOMAIN_NAME \
             --query 'HostedZones[0].Id' \
             --output text)
 
-          echo "Hosted Zone ID: $HOSTED_ZONE_ID"
-
-          echo "Updating Route53 record..."
           aws route53 change-resource-record-sets \
             --hosted-zone-id $HOSTED_ZONE_ID \
             --change-batch file://change-batch.json
